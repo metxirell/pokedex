@@ -1,10 +1,10 @@
 <script>
-import { 
+import {
     POKEMON_TYPE_COLOURS,
     POKEMON_STATS
- } from '../utils/constants.js'
+} from '../utils/constants.js'
 
-const REQUEST_NUM = 8;
+const REQUEST_NUM = 4;
 
 export default {
     props: {
@@ -16,40 +16,30 @@ export default {
     data() {
         return {
             region: '',
-            pokemons: [],
-            pokemonsToDisplay: [],
-            fromCounter: 0,
-            toCounter: REQUEST_NUM,
+            pokemonsList: [],
+            pokemonsData: [],
         };
     },
-    mounted() {
-        fetch(`https://pokeapi.co/api/v2/generation/${this.generation}`)
-            .then((response) => response.json())
-            .then((data) => {
-                this.region = data.main_region.name;
-                this.pokemons = this.sortPokemonsByOrder(data.pokemon_species);
-                this.setNewPokemonsToDisplay();
-            });
+    async mounted() {
+        const pokemonsList = await this.getPokemonsList();
+        this.region = pokemonsList.main_region.name;
+        this.pokemonsList = this.sortPokemonsById(pokemonsList.pokemon_species);
+        this.setPokemonsData();
     },
     computed: {},
-    watch: {
-        fromCounter() {
-            this.setNewPokemonsToDisplay();
-        }
-    },
+    watch: {},
     methods: {
-        increaseCounters() {
-            this.fromCounter += REQUEST_NUM;
-            this.toCounter += REQUEST_NUM;
+        sortPokemonsById(pokemons) { // TODO: improve
+            return pokemons.sort((a, b) => {
+                const idA = this.getIdFromUrl(a.url);
+                const idB = this.getIdFromUrl(b.url);
+
+                return idA - idB;
+            });
         },
 
-        sortPokemonsByOrder(pokemons) { // TODO: improve
-            return pokemons.sort((a, b) => {
-                const orderA = Number(a.url.replace('https://pokeapi.co/api/v2/pokemon-species/', '').replace('/', ''));
-                const orderB = Number(b.url.replace('https://pokeapi.co/api/v2/pokemon-species/', '').replace('/', ''));
-
-                return orderA - orderB;
-            });
+        getIdFromUrl(url) {
+            return Number(url.replace('https://pokeapi.co/api/v2/pokemon-species/', '').replace('/', ''));
         },
 
         getOfficialImageUrl(pokemon) {
@@ -64,22 +54,10 @@ export default {
             return POKEMON_STATS[stat];
         },
 
-        toggleCard(ev) {
-            const $card = ev.currentTarget.querySelector('.pokedex__pokemonInfo');
-            $card.classList.toggle('is-hidden');
-        },
-
-        padNumber(num) {
-            return String(num).padStart(3, '0');
-        },
-
-        async setNewPokemonsToDisplay() {
-            const newPokemons = this.pokemons.slice(this.fromCounter, this.toCounter);
-            newPokemons.forEach(async (pokemon, i) => {
-                let pokemonData = await this.getPokemonData(pokemon);
-                this.pokemonsToDisplay.push(pokemonData);
-                this.pokemonsToDisplay.sort((a, b) => a.id - b.id); // TODO: improve (sorting once, not in every loop)
-            })
+        async getPokemonsList() {
+            return fetch(`https://pokeapi.co/api/v2/generation/${this.generation}`)
+                .then((response) => response.json())
+                .then((data) => data);
         },
 
         async getPokemonData(pokemon) {
@@ -88,18 +66,39 @@ export default {
                 .then((data) => {
                     return data;
                 });
-        }
+        },
+
+        async setPokemonsData() {
+            const batchSize = REQUEST_NUM;
+            let position = 0;
+
+            while (position < this.pokemonsList.length) {
+                const itemsForBatch = this.pokemonsList.slice(position, position + batchSize);
+                const results = [...await Promise.all(itemsForBatch.map(item => this.getPokemonData(item)))];
+                this.pokemonsData.push(...results);
+                position += batchSize;
+            }
+        },
+
+        toggleCard(ev) {
+            const $card = ev.currentTarget.querySelector('.pokedex__pokemonInfo');
+            $card.classList.toggle('is-hidden');
+        },
+
+        padNumber(num) {
+            return String(num).padStart(3, '0');
+        },
     },
 }
 </script>
     
 <template>
     <div>
-        <h2>Generation: {{ generation }}</h2>
-        <p>Region: {{ region }}</p>
+        <h2 class="pokedex__generation">Generation: {{ generation }}</h2>
+        <p class="pokedex__region">Region: {{ region }}</p>
     </div>
     <div class="pokedex__list">
-        <div class="pokedex__pokemon" v-for="pokemon in pokemonsToDisplay" @click="toggleCard">
+        <div class="pokedex__pokemon" v-for="pokemon in pokemonsData" @click="toggleCard">
             <img class="pokedex__pokemonImg" :src="getOfficialImageUrl(pokemon)" :alt="pokemon.name + ' image'" />
             <div class="pokedex__pokemonHeader">
                 <p class="pokedex__pokemonName">{{ pokemon.name }}</p>
@@ -136,11 +135,15 @@ export default {
             </div>
         </div>
     </div>
-    <button class="pokedex__showMoreBtn" @click="increaseCounters">Show more</button>
+    <!-- <button class="pokedex__showMoreBtn">Show more</button> -->
 </template>
     
 <style lang="scss">
 .pokedex {
+    &__region {
+        text-transform: capitalize;
+    }
+
     &__list {
         display: flex;
         flex-wrap: wrap;
@@ -261,7 +264,7 @@ export default {
         }
     }
 
-    &__showMoreBtn {
+    /*&__showMoreBtn {
         background-color: #F2F2F2;
         margin: 40px 0;
         padding: 10px 30px;
@@ -271,7 +274,7 @@ export default {
         &:hover {
             background-color: #E0E0E0;
         }
-    }
+    }*/
 }
 </style>
     
